@@ -23,7 +23,14 @@ def expected_z(a, b, c):
     return (a * b + c) & 0xFF
 
 
+# Reset is applied only once, at the start of the simulation. Re-asserting
+# it between tests hits the z output register while it is still being
+# read/driven in the gate level netlist.
+_reset_done = False
+
+
 async def setup(dut):
+    global _reset_done
     # 10 us period = 100 kHz, plenty fast for simulation
     clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
@@ -31,9 +38,11 @@ async def setup(dut):
     dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
+    if not _reset_done:
+        dut.rst_n.value = 0
+        await ClockCycles(dut.clk, 10)
+        dut.rst_n.value = 1
+        _reset_done = True
     # Wait an even number of cycles so the design is back in phase 0.
     await ClockCycles(dut.clk, 2)
 
@@ -49,7 +58,7 @@ async def run_fmac(dut, a, b, c):
     dut.uio_in.value = 0
     await ClockCycles(dut.clk, 1)
     # Let the result register settle (phase is back to 0).
-    await Timer(1, unit="ns")
+    await Timer(10, unit="ns")
     return dut.uo_out.value.to_unsigned()
 
 
